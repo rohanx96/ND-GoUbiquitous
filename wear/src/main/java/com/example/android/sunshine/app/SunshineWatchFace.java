@@ -54,6 +54,7 @@ import com.google.android.gms.wearable.Wearable;
 
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
+import java.text.DateFormatSymbols;
 import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
@@ -123,9 +124,16 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
         float mXOffset;
         float mYOffset;
 
+        Paint mDatePaint;
+        Paint mHighTempPaint;
+        Paint mLowTempPaint;
+
         String mHighTemp;
         String mLowTemp;
         Bitmap mIcon;
+
+        String[] dayOfWeek;
+        String[] months;
 
         /**
          * Whether the display supports fewer bits for each color in ambient mode. When true, we
@@ -150,7 +158,21 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             mTextPaint = new Paint();
             mTextPaint = createTextPaint(resources.getColor(R.color.digital_text));
 
+            mDatePaint = new Paint();
+            mDatePaint = createTextPaint(resources.getColor(R.color.digital_text));
+            mDatePaint.setTextSize(resources.getDimension(R.dimen.digital_date_text_size));
+
+            mHighTempPaint = new Paint();
+            mHighTempPaint = createTextPaint(resources.getColor(R.color.high_temp));
+            mHighTempPaint.setTextSize(resources.getDimension(R.dimen.digital_temp_text_size));
+
+            mLowTempPaint = new Paint();
+            mLowTempPaint = createTextPaint(resources.getColor(R.color.low_temp));
+            mLowTempPaint.setTextSize(resources.getDimension(R.dimen.digital_temp_text_size));
+
             mCalendar = Calendar.getInstance();
+            dayOfWeek = new DateFormatSymbols().getShortWeekdays();
+            months = new DateFormatSymbols().getShortMonths();
         }
 
         @Override
@@ -235,6 +257,14 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             super.onAmbientModeChanged(inAmbientMode);
             if (mAmbient != inAmbientMode) {
                 mAmbient = inAmbientMode;
+                if(mAmbient){
+                    mDatePaint.setColor(Color.GRAY);
+                    mTextPaint.setColor(Color.WHITE);
+                }
+                else {
+                    mDatePaint.setColor(getColor(R.color.digital_text));
+                    mTextPaint.setColor(getColor(R.color.digital_text));
+                }
                 if (mLowBitAmbient) {
                     mTextPaint.setAntiAlias(!inAmbientMode);
                 }
@@ -248,6 +278,8 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
 
         @Override
         public void onDraw(Canvas canvas, Rect bounds) {
+            float centerX = bounds.centerX();
+            float centerY = bounds.centerY();
             if (mScaledBitmap == null) {
                 mScaledBitmap = Bitmap.createScaledBitmap(mBackgroundBitmap, bounds.width(), bounds.height(), true);
             }
@@ -267,7 +299,12 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
                     mCalendar.get(Calendar.MINUTE))
                     : String.format("%d:%02d:%02d", mCalendar.get(Calendar.HOUR),
                     mCalendar.get(Calendar.MINUTE), mCalendar.get(Calendar.SECOND));
-            canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
+            canvas.drawText(text, centerX - (mTextPaint.measureText(text)/2), mYOffset, mTextPaint);
+
+            String date = String.format("%s, %s %d, %d", dayOfWeek[mCalendar.get(Calendar.DAY_OF_WEEK)],
+                    months[mCalendar.get(Calendar.MONTH)], mCalendar.get(Calendar.DATE), mCalendar.get(Calendar.YEAR));
+            canvas.drawText(date, centerX - mDatePaint.measureText(date)/2,
+                    mYOffset - getResources().getDimension(R.dimen.date_y_offset),mDatePaint);
         }
 
         /**
@@ -323,7 +360,7 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             for (DataEvent event : dataEventBuffer) {
                 if (event.getType() == DataEvent.TYPE_CHANGED) {
                     DataItem item = event.getDataItem();
-                    if (item.getUri().getPath().compareTo("/sunshine-temp-update") == 0) {
+                    if (item.getUri().getPath().compareTo("/sunshine-weather") == 0) {
                         DataMap dataMap = DataMapItem.fromDataItem(item).getDataMap();
                         mHighTemp = dataMap.getString("high-temp") + "º";
                         mLowTemp = dataMap.getString("low-temp") + "º";
