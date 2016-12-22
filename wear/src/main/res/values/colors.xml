@@ -3,5 +3,5 @@
     <color name="background">#000000</color>
     <color name="digital_text">#2c3e50</color>
     <color name="high_temp">#f1c40f</color>
-    <color name="low_temp">#3498db</color>
+    <color name="low_temp">#dddddd</color>
 </resources>
