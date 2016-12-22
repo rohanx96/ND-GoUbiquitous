@@ -21,20 +21,38 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
 import android.view.SurfaceHolder;
 import android.view.WindowInsets;
 
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.wearable.Asset;
+import com.google.android.gms.wearable.DataApi;
+import com.google.android.gms.wearable.DataEvent;
+import com.google.android.gms.wearable.DataEventBuffer;
+import com.google.android.gms.wearable.DataItem;
+import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.Wearable;
+
+import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.util.Calendar;
 import java.util.TimeZone;
@@ -84,10 +102,14 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
         }
     }
 
-    private class Engine extends CanvasWatchFaceService.Engine {
+    private class Engine extends CanvasWatchFaceService.Engine implements GoogleApiClient.ConnectionCallbacks,
+            GoogleApiClient.OnConnectionFailedListener, DataApi.DataListener {
+
         final Handler mUpdateTimeHandler = new EngineHandler(this);
+        GoogleApiClient mGoogleApiClient;
         boolean mRegisteredTimeZoneReceiver = false;
-        Paint mBackgroundPaint;
+        Bitmap mBackgroundBitmap;
+        Bitmap mScaledBitmap;
         Paint mTextPaint;
         boolean mAmbient;
         Calendar mCalendar;
@@ -100,6 +122,10 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
         };
         float mXOffset;
         float mYOffset;
+
+        String mHighTemp;
+        String mLowTemp;
+        Bitmap mIcon;
 
         /**
          * Whether the display supports fewer bits for each color in ambient mode. When true, we
@@ -119,8 +145,7 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             Resources resources = SunshineWatchFace.this.getResources();
             mYOffset = resources.getDimension(R.dimen.digital_y_offset);
 
-            mBackgroundPaint = new Paint();
-            mBackgroundPaint.setColor(resources.getColor(R.color.background));
+            mBackgroundBitmap = ((BitmapDrawable) getResources().getDrawable(R.drawable.wearbg)).getBitmap();
 
             mTextPaint = new Paint();
             mTextPaint = createTextPaint(resources.getColor(R.color.digital_text));
@@ -223,11 +248,14 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
 
         @Override
         public void onDraw(Canvas canvas, Rect bounds) {
+            if (mScaledBitmap == null) {
+                mScaledBitmap = Bitmap.createScaledBitmap(mBackgroundBitmap, bounds.width(), bounds.height(), true);
+            }
             // Draw the background.
             if (isInAmbientMode()) {
                 canvas.drawColor(Color.BLACK);
             } else {
-                canvas.drawRect(0, 0, bounds.width(), bounds.height(), mBackgroundPaint);
+                canvas.drawBitmap(mScaledBitmap, 0, 0, null);
             }
 
             // Draw H:MM in ambient mode or H:MM:SS in interactive mode.
@@ -273,5 +301,64 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
                 mUpdateTimeHandler.sendEmptyMessageDelayed(MSG_UPDATE_TIME, delayMs);
             }
         }
+
+        /** Google client and data listener callback methods */
+        @Override
+        public void onConnected(@Nullable Bundle bundle) {
+            Wearable.DataApi.addListener(mGoogleApiClient, Engine.this);
+        }
+
+        @Override
+        public void onConnectionSuspended(int i) {
+
+        }
+
+        @Override
+        public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+
+        }
+
+        @Override
+        public void onDataChanged(DataEventBuffer dataEventBuffer) {
+            for (DataEvent event : dataEventBuffer) {
+                if (event.getType() == DataEvent.TYPE_CHANGED) {
+                    DataItem item = event.getDataItem();
+                    if (item.getUri().getPath().compareTo("/sunshine-temp-update") == 0) {
+                        DataMap dataMap = DataMapItem.fromDataItem(item).getDataMap();
+                        mHighTemp = dataMap.getString("high-temp") + "º";
+                        mLowTemp = dataMap.getString("low-temp") + "º";
+                        new GetBitmapForWeatherTask().execute(dataMap.getAsset("icon"));
+                        invalidate();
+                    }
+                }
+            }
+        }
+
+        class GetBitmapForWeatherTask extends AsyncTask<Asset, Void, Void> {
+
+            @Override
+            protected Void doInBackground(Asset... assets) {
+                Asset asset = assets[0];
+                if (asset == null)
+                    return null;
+
+                ConnectionResult result = mGoogleApiClient.blockingConnect(500, TimeUnit.MILLISECONDS);
+                if (!result.isSuccess())
+                    return null;
+
+                // convert asset into a file descriptor and block until it's ready
+                InputStream assetInputStream = Wearable.DataApi.getFdForAsset(mGoogleApiClient, asset).await().getInputStream();
+
+                if (assetInputStream == null)
+                    return null;
+
+                // decode the stream into a bitmap
+                mIcon = BitmapFactory.decodeStream(assetInputStream);
+                postInvalidate();
+
+                return null;
+            }
+        }
+
     }
 }
