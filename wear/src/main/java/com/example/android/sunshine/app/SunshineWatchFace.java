@@ -78,6 +78,7 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
      */
     private static final int MSG_UPDATE_TIME = 0;
 
+    public static final String WEATHER_PATH = "/sunshine-weather";
     @Override
     public Engine onCreateEngine() {
         return new Engine();
@@ -150,6 +151,13 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
                     .setBackgroundVisibility(WatchFaceStyle.BACKGROUND_VISIBILITY_INTERRUPTIVE)
                     .setShowSystemUiTime(false)
                     .build());
+
+            mGoogleApiClient = new GoogleApiClient.Builder(SunshineWatchFace.this)
+                    .addConnectionCallbacks(this)
+                    .addOnConnectionFailedListener(this)
+                    .addApi(Wearable.API)
+                    .build();
+
             Resources resources = SunshineWatchFace.this.getResources();
             mYOffset = resources.getDimension(R.dimen.digital_y_offset);
 
@@ -198,9 +206,11 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
 
                 // Update time zone in case it changed while we weren't visible.
                 mCalendar.setTimeZone(TimeZone.getDefault());
+                mGoogleApiClient.connect();
                 invalidate();
             } else {
                 unregisterReceiver();
+                mGoogleApiClient.disconnect();
             }
 
             // Whether the timer should be running depends on whether we're visible (as well as
@@ -311,7 +321,7 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
                     mYOffset - resources.getDimension(R.dimen.date_y_offset),mDatePaint);
             if(mHighTemp != null && mLowTemp !=  null){
                 float yOffset =  mYOffset + resources.getDimension(R.dimen.temp_y_offset);
-                if(!mAmbient)
+                if(!mAmbient && mIcon!=null)
                     canvas.drawBitmap(mIcon, centerX - resources.getDimension(R.dimen.icon)/2, centerY,null);
                 float xOffset = centerX - resources.getDimension(R.dimen.temp_offset_x) - mLowTempPaint.measureText(mLowTemp);
                 canvas.drawText(mLowTemp, xOffset, yOffset ,mLowTempPaint);
@@ -372,10 +382,10 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             for (DataEvent event : dataEventBuffer) {
                 if (event.getType() == DataEvent.TYPE_CHANGED) {
                     DataItem item = event.getDataItem();
-                    if (item.getUri().getPath().compareTo("/sunshine-weather") == 0) {
+                    if (item.getUri().getPath().compareTo(WEATHER_PATH) == 0) {
                         DataMap dataMap = DataMapItem.fromDataItem(item).getDataMap();
-                        mHighTemp = dataMap.getString("high-temp") + "º";
-                        mLowTemp = dataMap.getString("low-temp") + "º";
+                        mHighTemp = dataMap.getString("high-temp");
+                        mLowTemp = dataMap.getString("low-temp");
                         new GetBitmapForWeatherTask().execute(dataMap.getAsset("icon"));
                         invalidate();
                     }

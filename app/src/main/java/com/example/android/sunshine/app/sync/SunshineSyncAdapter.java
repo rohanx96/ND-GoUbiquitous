@@ -76,6 +76,7 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter implements 
     private static final long DAY_IN_MILLIS = 1000 * 60 * 60 * 24;
     private static final int WEATHER_NOTIFICATION_ID = 3004;
 
+    public static final String WEATHER_PATH = "/sunshine-weather";
 
     private static final String[] NOTIFY_WEATHER_PROJECTION = new String[] {
             WeatherContract.WeatherEntry.COLUMN_WEATHER_ID,
@@ -418,17 +419,18 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter implements 
             return;
         }
 
-        Bitmap iconBitmap = BitmapFactory.decodeResource(getContext().getResources(), cursor.getInt(INDEX_WEATHER_ID));
+        Bitmap iconBitmap = BitmapFactory.decodeResource(getContext().getResources(),
+                Utility.getArtResourceForWeatherCondition(cursor.getInt(INDEX_WEATHER_ID)));
 
-        PutDataMapRequest mapRequest = PutDataMapRequest.create("/sunshine-weather");
+        PutDataMapRequest mapRequest = PutDataMapRequest.create(WEATHER_PATH);
         mapRequest.getDataMap().putString("high-temp", Utility.formatTemperature(getContext(), cursor.getDouble(INDEX_MAX_TEMP)));
         mapRequest.getDataMap().putString("low-temp", Utility.formatTemperature(getContext(), cursor.getDouble(INDEX_MIN_TEMP)));
 
         ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
         iconBitmap.compress(Bitmap.CompressFormat.PNG, 100, byteStream);
         mapRequest.getDataMap().putAsset("icon", Asset.createFromBytes(byteStream.toByteArray()));
-
-        mapRequest.getDataMap().putLong("time", System.currentTimeMillis());
+        if(BuildConfig.DEBUG)
+            mapRequest.getDataMap().putLong("time", System.currentTimeMillis());
 
         PutDataRequest request = mapRequest.asPutDataRequest();
         Wearable.DataApi.putDataItem(mGoogleApiClient, request).setResultCallback(new ResultCallbacks<DataApi.DataItemResult>() {
